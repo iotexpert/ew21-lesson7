@@ -33,7 +33,7 @@ static cy_rslt_t json_cb(cy_JSON_object_t *json_object, void *arg);
 #define CLOUD_WIFI_BAND      CY_WCM_WIFI_BAND_ANY
 
 #define CLOUD_MQTT_BROKER        "mqtt.eclipseprojects.io"
-#define CLOUD_MQTT_CLIENT_PREFIX "arh_drone"
+#define CLOUD_MQTT_CLIENT_PREFIX "drone"
 #define CLOUD_MQTT_TOPIC         "arh_motor_speed"
 
 #define MOTOR_KEY "motor"

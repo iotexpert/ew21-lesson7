@@ -66,6 +66,12 @@ void motor_task(void* param)
 						CYBSP_D6,
 						CYBSP_D7,
 						&numberOfBoards);
+    if (tle9879_sys.board_count == 0)
+	{
+		printf("Motor board not detected. Exiting Motor task.\n");
+		vTaskDelete(NULL);
+	}
+
     tle9879sys_setMode(&tle9879_sys, FOC, 1, false);
 	
 	bool motorState=false;
@@ -110,7 +116,7 @@ void motor_task(void* param)
 				motorState = false;
 			}
 
-			float motorSpeed = ((float)(currentPercentage-RPM_PERCENT_MIN))/100.0 * (RPM_MAX - RPM_MIN) + RPM_MIN;
+			float motorSpeed = ((float)(currentPercentage-RPM_PERCENT_MIN))/(float)(100.0-RPM_PERCENT_MIN) * (RPM_MAX - RPM_MIN) + RPM_MIN;
 			tle9879sys_setMotorSpeed(&tle9879_sys, motorSpeed, 1);
 			printf("Current %d%% Desired=%d%% Speed=%f\n",currentPercentage,desiredPercentage,motorSpeed);
 
@@ -139,5 +145,5 @@ void motor_task(void* param)
 void motor_update(int speed)
 {
 	if(motor_value_q)
-		xQueueSend(motor_value_q,&speed,0);
+		xQueueOverwrite(motor_value_q,&speed);
 }
