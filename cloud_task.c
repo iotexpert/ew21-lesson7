@@ -1,4 +1,3 @@
-
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -23,55 +22,22 @@ static cy_mqtt_t mqtthandle;
 
 static void cloud_connectWifi();
 static void cloud_startMQTT();
+static void cloud_subscribeMQTT();
 static void cloud_mqtt_event_cb( cy_mqtt_t mqtt_handle, cy_mqtt_event_t event, void *user_data);
-
-#define KEY_NAME "motor"
-
-
-/* This is the callback from the cy_JSON_parser function. It is called whenever
- * the parser finds a JSON object. */
-cy_rslt_t json_cb(cy_JSON_object_t *json_object, void *arg)
-{
-	int motorSpeed;
-
-	if(memcmp(json_object->object_string, KEY_NAME, json_object->object_string_length) == 0)
-	{
-		if(json_object->value_type == JSON_NUMBER_TYPE)
-		{
-			/* Add null termination to the value and then convert to a number */
-			char resultString[json_object->value_length + 1];
-			memcpy(resultString, json_object->value, json_object->value_length);
-			resultString[json_object->value_length] = 0;
-			motorSpeed = (uint8_t) atoi(resultString);
-			printf("Received speed value from cloud: %d\n", motorSpeed);
-			motor_update(motorSpeed);
-		}
-	}
-	return CY_RSLT_SUCCESS;
-}
+static cy_rslt_t json_cb(cy_JSON_object_t *json_object, void *arg);
 
 
-void cloud_subscribeMQTT()
-{
+#define CLOUD_WIFI_AP        "ew2021"
+#define CLOUD_WIFI_PW        "ew2021ap"
+#define CLOUD_WIFI_SECURITY  CY_WCM_SECURITY_WPA2_MIXED_PSK
+#define CLOUD_WIFI_BAND      CY_WCM_WIFI_BAND_ANY
 
-	cy_rslt_t result;
+#define CLOUD_MQTT_BROKER        "mqtt.eclipseprojects.io"
+#define CLOUD_MQTT_CLIENT_PREFIX "arh_drone"
+#define CLOUD_MQTT_TOPIC         "arh_motor_speed"
 
-	cy_mqtt_subscribe_info_t    sub_msg[1];
+#define MOTOR_KEY "motor"
 
-
-	    /* Subscribe to motor speed MQTT messages */
-    sub_msg[0].qos = 0;
-    sub_msg[0].topic = "motor_speed";
-    sub_msg[0].topic_len = strlen(sub_msg[0].topic);
-
-    result = cy_mqtt_subscribe( mqtthandle, sub_msg, 1 );
-	CY_ASSERT(result == CY_RSLT_SUCCESS);
-	printf("Subscribe Success\n");
-
-    /* Register JSON callback function */
-    cy_JSON_parser_register_callback(json_cb, NULL);
-
-}
 
 void cloud_task(void* param)
 {
@@ -80,7 +46,6 @@ void cloud_task(void* param)
 	cloud_connectWifi();
 	cloud_startMQTT();
 	cloud_subscribeMQTT();
-
 
     for(;;)
     {
@@ -94,11 +59,12 @@ static void cloud_connectWifi()
 	cy_rslt_t result;
 
 	cy_wcm_connect_params_t connect_param = {
-		.ap_credentials.SSID = "Guest",
-		.ap_credentials.password = "",
-		.ap_credentials.security = CY_WCM_SECURITY_OPEN,
+		.ap_credentials.SSID = CLOUD_WIFI_AP,
+		.ap_credentials.password = CLOUD_WIFI_PW,
+		.ap_credentials.security = CLOUD_WIFI_SECURITY,
+		.static_ip_settings = 0,
 		.BSSID = {0},
-		.band = CY_WCM_WIFI_BAND_ANY,
+		.band = CLOUD_WIFI_BAND,
 	};
 	cy_wcm_config_t config = {.interface = CY_WCM_INTERFACE_TYPE_STA}; // We are a station (not a Access Point)
 
@@ -142,7 +108,6 @@ static void cloud_connectWifi()
 	} while (result != CY_RSLT_SUCCESS);
 }
 
-
 static void cloud_startMQTT()
 {
 	static cy_mqtt_connect_info_t    	connect_info;
@@ -151,8 +116,8 @@ static void cloud_startMQTT()
 
 	cy_rslt_t result;
 
-	cy_mqtt_init();
-    broker_info.hostname = "mqtt.eclipseprojects.io";
+	result = cy_mqtt_init();
+    broker_info.hostname = CLOUD_MQTT_BROKER;
     broker_info.hostname_len = strlen(broker_info.hostname);
     broker_info.port = 1883;
 
@@ -161,14 +126,43 @@ static void cloud_startMQTT()
                               cloud_mqtt_event_cb, NULL,
                               &mqtthandle );
 
+	CY_ASSERT(result == CY_RSLT_SUCCESS);
+
+	static char clientId[32];
+	srand(xTaskGetTickCount());
+	snprintf(clientId,sizeof(clientId),"%s%6d",CLOUD_MQTT_CLIENT_PREFIX,rand());
     memset( &connect_info, 0, sizeof( cy_mqtt_connect_info_t ) );
-    connect_info.client_id      = "arh_drone";
+    connect_info.client_id      = clientId;
     connect_info.client_id_len  = strlen(connect_info.client_id);
     connect_info.keep_alive_sec = 60;
     connect_info.will_info      = 0;
+	connect_info.clean_session = true;
+
 
     result = cy_mqtt_connect( mqtthandle, &connect_info );
 	CY_ASSERT(result == CY_RSLT_SUCCESS);
+	printf("MQTT Connect Success to %s Client=%s\n",CLOUD_MQTT_BROKER,clientId);
+
+}
+
+static void cloud_subscribeMQTT()
+{
+
+	cy_rslt_t result;
+
+	cy_mqtt_subscribe_info_t    sub_msg[1];
+
+	/* Subscribe to motor speed MQTT messages */
+    sub_msg[0].qos = 0;
+    sub_msg[0].topic = CLOUD_MQTT_TOPIC;
+    sub_msg[0].topic_len = strlen(sub_msg[0].topic);
+
+    result = cy_mqtt_subscribe( mqtthandle, sub_msg, 1 );
+	CY_ASSERT(result == CY_RSLT_SUCCESS);
+	printf("Subscribe Success to Topic %s\n",CLOUD_MQTT_TOPIC);
+
+    /* Register JSON callback function */
+    cy_JSON_parser_register_callback(json_cb, NULL);
 
 }
 
@@ -194,7 +188,7 @@ static void cloud_mqtt_event_cb( cy_mqtt_t mqtt_handle, cy_mqtt_event_t event, v
             printf( "Incoming Publish Topic Name: %.*s\n", received_msg->topic_len, received_msg->topic );
             printf( "Incoming Publish message Packet Id is %u.\n", event.data.pub_msg.packet_id );
             printf( "Incoming Publish Message : %.*s.\n\n", ( int )received_msg->payload_len, ( const char * )received_msg->payload );
-			if(memcmp(received_msg->topic, "motor_speed", strlen("motor_speed")) == 0) /* Topic matches the motor speed topic */
+			if(memcmp(received_msg->topic, CLOUD_MQTT_TOPIC, strlen(CLOUD_MQTT_TOPIC)) == 0) /* Topic matches the motor speed topic */
 			{
 					cy_JSON_parser(received_msg->payload, received_msg->payload_len);
 			}
@@ -206,3 +200,25 @@ static void cloud_mqtt_event_cb( cy_mqtt_t mqtt_handle, cy_mqtt_event_t event, v
     }
 }
 
+
+/* This is the callback from the cy_JSON_parser function. It is called whenever
+ * the parser finds a JSON object. */
+static cy_rslt_t json_cb(cy_JSON_object_t *json_object, void *arg)
+{
+	int motorSpeed;
+
+	if(memcmp(json_object->object_string, MOTOR_KEY, json_object->object_string_length) == 0)
+	{
+		if(json_object->value_type == JSON_NUMBER_TYPE)
+		{
+			/* Add null termination to the value and then convert to a number */
+			char resultString[json_object->value_length + 1];
+			memcpy(resultString, json_object->value, json_object->value_length);
+			resultString[json_object->value_length] = 0;
+			motorSpeed = (uint8_t) atoi(resultString);
+			printf("Received speed value from cloud: %d\n", motorSpeed);
+			motor_update(motorSpeed);
+		}
+	}
+	return CY_RSLT_SUCCESS;
+}

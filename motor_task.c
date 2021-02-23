@@ -14,6 +14,7 @@
 #include "cloud_task.h"
 
 #include "tle9879_system.h"
+#include "ws2812.h"
 
 static QueueHandle_t motor_value_q;
 
@@ -27,6 +28,8 @@ static QueueHandle_t motor_value_q;
 #define  	RPM_MAX 				5500.0
 #define  	RPM_MIN 				1000.0
 
+#define		NUM_LEDS				(61)
+
 void motor_task(void* param)
 {
     (void)param;
@@ -35,6 +38,20 @@ void motor_task(void* param)
 
     uint8_t numberOfBoards = 1;
 	BaseType_t rtos_api_result;
+
+	/* LED color array - 10 different sets of colors each with RGB values */
+	uint8_t ledColors[7][3] = {
+			{ 0,  0,  0},	// Off
+			{20,  0, 30},	// Violet
+			{ 0,  0, 50},	// Blue
+			{ 0, 50,  0},	// Green
+			{30, 20,  0},	// Yellow
+			{42,  8,  0},	// Orange
+			{50,  0,  0},	// Red
+	};
+
+	uint8_t ledColorRow = 0;
+	uint8_t ledColorRowPrev = 0;
 
 	motor_value_q = xQueueCreate(1,sizeof(int));
 
@@ -54,6 +71,9 @@ void motor_task(void* param)
 	bool motorState=false;
 	int currentPercentage=0;
 	int desiredPercentage=0;
+
+    /* Initialize LED strips */
+    ws2812_init(NUM_LEDS, P10_0, P10_1, P10_2);
 
     while(1)
     {
@@ -93,11 +113,31 @@ void motor_task(void* param)
 			float motorSpeed = ((float)(currentPercentage-RPM_PERCENT_MIN))/100.0 * (RPM_MAX - RPM_MIN) + RPM_MIN;
 			tle9879sys_setMotorSpeed(&tle9879_sys, motorSpeed, 1);
 			printf("Current %d%% Desired=%d%% Speed=%f\n",currentPercentage,desiredPercentage,motorSpeed);
+
+			/* Calculate LED color and update if it has changed */
+			if(motorState == false)
+			{
+				/* Turn off LEDs */
+				ws2812_setMultiRGB(0, NUM_LEDS-1, 0, 0, 0);
+				ws2812_update();
+				ledColorRowPrev = 0;
+			}
+			else
+			{
+				ledColorRow = 1 + (uint8_t)((( (uint16_t)motorSpeed - (uint16_t)MIN_RPM ) * 5) / ((uint16_t)MAX_RPM - (uint16_t)MIN_RPM)); /* Determine row to use */
+				if(ledColorRowPrev != ledColorRow)
+				{
+					ws2812_setMultiRGB(0, NUM_LEDS-1, ledColors[ledColorRow][0], ledColors[ledColorRow][1], ledColors[ledColorRow][2]);
+					ws2812_update();
+					ledColorRowPrev = ledColorRow;
+				}
+			}
 		}
     }
 }
 
 void motor_update(int speed)
 {
-	xQueueSend(motor_value_q,&speed,0);
+	if(motor_value_q)
+		xQueueSend(motor_value_q,&speed,0);
 }
