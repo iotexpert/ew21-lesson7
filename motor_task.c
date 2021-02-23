@@ -124,7 +124,7 @@ void motor_task(void* param)
 			}
 			else
 			{
-				ledColorRow = 1 + (uint8_t)((( (uint16_t)motorSpeed - (uint16_t)MIN_RPM ) * 5) / ((uint16_t)MAX_RPM - (uint16_t)MIN_RPM)); /* Determine row to use */
+				ledColorRow = 1 + (uint8_t)((( (uint16_t)motorSpeed - (uint16_t)RPM_MIN ) * 5) / ((uint16_t)RPM_MAX - (uint16_t)RPM_MIN)); /* Determine row to use */
 				if(ledColorRowPrev != ledColorRow)
 				{
 					ws2812_setMultiRGB(0, NUM_LEDS-1, ledColors[ledColorRow][0], ledColors[ledColorRow][1], ledColors[ledColorRow][2]);
