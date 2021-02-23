@@ -39,7 +39,7 @@ void motor_task(void* param)
     uint8_t numberOfBoards = 1;
 	BaseType_t rtos_api_result;
 
-	/* LED color array - 10 different sets of colors each with RGB values */
+	/* LED color array - 7 different colors each with RGB values */
 	uint8_t ledColors[7][3] = {
 			{ 0,  0,  0},	// Off
 			{20,  0, 30},	// Violet
