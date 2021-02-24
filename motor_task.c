@@ -1,5 +1,3 @@
-#include "motor_task.h"
-
 #include "cybsp.h"
 #include "cyhal.h"
 #include "cycfg.h"
@@ -11,7 +9,6 @@
 #include <math.h>
 
 #include "motor_task.h"
-#include "cloud_task.h"
 
 #include "tle9879_system.h"
 #include "ws2812.h"
